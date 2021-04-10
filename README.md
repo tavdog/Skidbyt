@@ -1,52 +1,21 @@
 # panel-led-mqtt
-Panel LED compatible con Home Assistant que utiliza MQTT y un ESP32
+
+Custom version of [panel-led-mqtt](https://github.com/domoticafacilconjota/panel-led-mqtt/tree/v0.100-RC) to be used with [Pixlet](https://github.com/cghdev/pixlet). This version reads base64 encoded GIFs via a MQTT topic and uses [GifDecoder library](https://github.com/pixelmatix/GifDecoder/) to render it in the LED panel.
 
 # TOPIC MQTT
 
-### plm/ota_data
-#### Tipo de Payload: JSON
+### plm/applet
+#### Payload: base64 encoded GIF image
+e.g:
 
-    {
-        "title": "EJEMPLO (MAX 14)",
-        "value": "25.3 (MAX 5)",
-        "image": "R, G, B (x1024)"
-    }
- 
- ### plm/subscribers
- #### Tipo de Payload: String
+`R0lGODlhQAAgAAAAACH5BAAFAAAALAAAAABAACAAgAAAAP///wJv8DF1ub2DiSnM+uSZcOdOM2X7mBH7IlKrLDMErsWNU22tSw+2bPhFariUMISTeTqzny2oAxYfvJ3kwqL2mKufdWfEfJ9g8ZhcNp/RafWa3Xa/4XH5nF633/F5/Z7f9/8BAwUHCQsNDxETFRcZvwoAADs=`
 
 
-    123456
+### plm/brightness
+#### Payload: Brightness level set between as number 0 to 100
+e.g.:
 
-# Licencia
-  Copyright (C) 2020  Domótica Fácil con Jota en YouTube
+`80`
 
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-  
-  --------
-  
-  Copyright (C) 2020  Domótica Fácil con Jota en YouTube
-
-  Este programa es software libre: puede redistribuirlo y / o modificarlo
-  bajo los términos de la Licencia Pública General GNU publicada por
-  Free Software Foundation, ya sea la versión 3 de la Licencia, o
-  (a su elección) cualquier versión posterior.
-
-  Este programa se distribuye con la esperanza de que sea útil,
-  pero SIN NINGUNA GARANTÍA; sin siquiera la garantía implícita de
-  COMERCIABILIDAD o APTITUD PARA UN PROPÓSITO EN PARTICULAR. Ver el
-  GNU General Public License para más detalles.
-
-  Debería haber recibido una copia de la Licencia Pública General de GNU
-  junto con este programa. Si no, vea http://www.gnu.org/licenses/.
+### plm/status
+"up" gets published when ESP32 boots up.

@@ -1,458 +1,298 @@
-/*
-  Copyright (C) 2020  Domótica Fácil con Jota en YouTube
-
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
 #include <FS.h>                                   // File System
 #include "SPIFFS.h"
 
 #include <Arduino.h>                              // Arduino
 #include <WiFiManager.h>                          // Configuración WiFi
-#include <SmartMatrix3.h>                         // Librería para controlar el panel LED
 #include <PubSubClient.h>                         // Cliente MQTT 0.8.2
 #include <ArduinoJson.h>                          // Arduino JSON parser 6.15.1
-#include <TimeLib.h>					                    // Control del tiempo sin RTC
-#include <NtpClientLib.h>				                  // Cliente NTP 3.0.2-beta
+#include <time.h>
 
 #include <constants.h>                            // Cabecera de constantes
 #include <utils.h>                                // Cabecera de utilidades
 #include <mqtt.h>                                 // Cabecera MQTT
 
-#include <gimpbitmap.h>                           // Cabecera GIMP
+#include <MatrixHardware_ESP32_V0.h>                // This file contains multiple ESP32 hardware configurations, edit the file to define GPIOPINOUT (or add #define GPIOPINOUT with a hardcoded number before this #include)
+#include <SmartMatrix.h>
 
-/** LISTADO DE BITMAPS **/
-#include "img_yt.c"
-#include "img_df.c"
+#include <GifDecoder.h>
 
-#define configTIMER_TASK_STACK_DEPTH 4096         // La cosa está muy mala
 
-#define GPIOPINOUT ESP32_FORUM_PINOUT_WITH_LATCH  // ESP32 sin controladora
-#define COLOR_DEPTH 24                            // Profundidad de color
+#define DISPLAY_TIME_SECONDS 10
+#define NUMBER_FULL_CYCLES   100
 
-const uint8_t kMatrixWidth = 64;                  // Número de LEDs a lo ancho
-const uint8_t kMatrixHeight = 32;                 // Número de LEDs a lo alto
-const uint8_t kRefreshDepth = 36;                 // Profundidad para refrescar
-const uint8_t kDmaBufferRows = 4;                 // Número de filas en el buffer DMA
+#define USE_SMARTMATRIX         1
+#define ENABLE_SCROLLING        1
 
-// El panel recomendado LINK utiliza un refresco de 16
-const uint8_t kPanelType = SMARTMATRIX_HUB75_32ROW_MOD16SCAN;
 
-// No vamos a utilizar opciones por ahora.
-const uint8_t kMatrixOptions = (SMARTMATRIX_OPTIONS_NONE); 
+
+#if (USE_SMARTMATRIX == 1)
+/* SmartMatrix configuration and memory allocation */
+#define COLOR_DEPTH 24                  // Choose the color depth used for storing pixels in the layers: 24 or 48 (24 is good for most sketches - If the sketch uses type `rgb24` directly, COLOR_DEPTH must be 24)
+const uint16_t kMatrixWidth = 64;       // Set to the width of your display, must be a multiple of 8
+const uint16_t kMatrixHeight = 32;      // Set to the height of your display
+const uint8_t kRefreshDepth = 36;       // Tradeoff of color quality vs refresh rate, max brightness, and RAM usage.  36 is typically good, drop down to 24 if you need to.  On Teensy, multiples of 3, up to 48: 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48.  On ESP32: 24, 36, 48
+const uint8_t kDmaBufferRows = 4;       // known working: 2-4, use 2 to save RAM, more to keep from dropping frames and automatically lowering refresh rate.  (This isn't used on ESP32, leave as default)
+const uint8_t kPanelType = SM_PANELTYPE_HUB75_32ROW_MOD16SCAN;  // Choose the configuration that matches your panels.  See more details in MatrixCommonHUB75.h and the docs: https://github.com/pixelmatix/SmartMatrix/wiki
+const uint32_t kMatrixOptions = (SM_HUB75_OPTIONS_NONE);        // see docs for options: https://github.com/pixelmatix/SmartMatrix/wiki
 const uint8_t kBackgroundLayerOptions = (SM_BACKGROUND_OPTIONS_NONE);
 const uint8_t kScrollingLayerOptions = (SM_SCROLLING_OPTIONS_NONE);
-const uint8_t kIndexedLayerOptions = (SM_INDEXED_OPTIONS_NONE);
 
-// Configuramos los parámetros
 SMARTMATRIX_ALLOCATE_BUFFERS(matrix, kMatrixWidth, kMatrixHeight, kRefreshDepth, kDmaBufferRows, kPanelType, kMatrixOptions);
 SMARTMATRIX_ALLOCATE_BACKGROUND_LAYER(backgroundLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kBackgroundLayerOptions);
+#if (ENABLE_SCROLLING == 1)
 SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(scrollingLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
-SMARTMATRIX_ALLOCATE_INDEXED_LAYER(indexedLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kIndexedLayerOptions);
+#endif
+#endif
 
-// Inicializamos variables que posteriormente podrán ser modificadas mediante MQTT
+/* template parameters are maxGifWidth, maxGifHeight, lzwMaxBits
+ * 
+ * lzwMaxBits is included for backwards compatibility reasons, but isn't used anymore
+ */
+GifDecoder<kMatrixWidth, kMatrixHeight, 12> decoder;
+// range 0-255
 int defaultBrightness = (10*255) / 100;
+
+const rgb24 COLOR_BLACK = {
+    0, 0, 0 };
+void screenClearCallback(void) {
+#if (USE_SMARTMATRIX == 1)
+    backgroundLayer.fillScreen({0,0,0});
+#endif
+}
+
+void updateScreenCallback(void) {
+#if (USE_SMARTMATRIX == 1)
+    backgroundLayer.swapBuffers();
+#endif
+}
+
+void drawPixelCallback(int16_t x, int16_t y, uint8_t red, uint8_t green, uint8_t blue) {
+#if (USE_SMARTMATRIX == 1)
+    backgroundLayer.drawPixel(x, y, {red, green, blue});
+#endif
+}
+#define configTIMER_TASK_STACK_DEPTH 4096
+
 int defaultScrollOffset = 6;
 
 // Variables de configuración para el AP WiFi
-char host[] = "DF";
+char host[] = "PX";
 char separator[] = "_";
 char SSID[18];
 byte mac[6];
 char macFull[6];
 
-// Variable para guardar el bitmap de forma temporal.
-uint8_t bitmapArray[32*32*3+1];
-#define BITMAP_WIDTH 32
-#define BITMAP_HEIGHT 32
-#define RRR 0
-#define GGG 1
-#define BBB 2
-
-// Función para dibujar los bitmaps
-void drawBitmap(int16_t x, int16_t y, const gimp32x32bitmap* bitmap) {
-  for(unsigned int i=0; i < bitmap->height; i++) {
-    for(unsigned int j=0; j < bitmap->width; j++) {
-
-      rgb24 pixel = { bitmap->pixel_data[(i*bitmap->width + j)*3 + 0],
-                      bitmap->pixel_data[(i*bitmap->width + j)*3 + 1],
-                      bitmap->pixel_data[(i*bitmap->width + j)*3 + 2] };
-
-      backgroundLayer.drawPixel(x + j, y + i, pixel);
-
-      // if (x + j <= 4) {
-      // Serial.print(x + j);
-      // Serial.print(" ");
-      // Serial.print(y + i);
-      // Serial.print(" ");
-      // Serial.print(bitmap->pixel_data[(i*bitmap->width + j)*3 + 0]);
-      // Serial.print(" ");
-      // Serial.print(bitmap->pixel_data[(i*bitmap->width + j)*3 + 1]);
-      // Serial.print(" ");
-      // Serial.println(bitmap->pixel_data[(i*bitmap->width + j)*3 + 2]);
-      // }
-
-
-      
-    }
-  }
-}
-
-// Función para dibujar los bitmaps
-void drawBitmapMqtt(int16_t aX, int16_t aY, const char* temp) {
-  int led = 0;
-  // Creamos una copia temporal.
-  char* otaImage = (char*) temp;
-  // Si la imagen enviada OTA no ha sido procesada, lo hacemos
-  if (otaImage) {
-    char *token;
-
-    while((token = strsep(&otaImage, ","))) {
-      bitmapArray[led] = strtoul(token, nullptr, 0);
-
-      led++;
-    }
-  }
-
-  for (int y=0; y<BITMAP_HEIGHT; y++) {
-    for (int x=0; x<BITMAP_WIDTH; x++) {
-      rgb24 pixel = {bitmapArray[(y*BITMAP_WIDTH + x)*3 + RRR],
-                  bitmapArray[(y*BITMAP_WIDTH + x)*3 + GGG],
-                  bitmapArray[(y*BITMAP_WIDTH + x)*3 + BBB]};
-      
-      backgroundLayer.drawPixel(aX + x, aY + y, pixel);
-    }
-  }  
-}
-
-// Llamada de control para el modo de configuración
 void configModeCallback (WiFiManager *myWiFiManager) {
     
-    // Paramos el desplazamiento del texto y configuramos un nuevo texto
     scrollingLayer.stop();
-    scrollingLayer.setColor(BLANCO);
+    scrollingLayer.setColor(WHITE);
     scrollingLayer.setMode(wrapForward);
     scrollingLayer.setSpeed(80);
     scrollingLayer.setFont(font6x10);
-    char noConnection[] = "Imposible conectar. Creando punto de acceso para realizar la configuración. Es el siguiente:";     // Importante para mostrar acentos
-    utf8ascii(noConnection);
-    scrollingLayer.start(noConnection, -1);
+    scrollingLayer.start("Unable to connect. Access Point:", -1);
 
-    // Mostramos el SSDI justo debajo del texto que se desplaza
+    // Show SSID
     backgroundLayer.setFont(font5x7);
-    backgroundLayer.drawString(0, 21, AZUL_CLARO, SSID);
+    backgroundLayer.drawString(0, 21, LIGHT_BLUE, SSID);
     backgroundLayer.swapBuffers();
 }
 
-// JSON
 StaticJsonDocument<3500> document;
 
-// Variables MQTT
 char mqtt_server[40];
 char mqtt_port[8];
 char mqtt_user[40];
 char mqtt_password[40];
 
-// ¿Debemos guardar los datos?
 bool saveConfig = false;
 
-//callback notifying us of the need to save config
 void saveConfigCallback () {
-  saveConfig = true;
-  Serial.println("Debemos guardar la configuración");
+    saveConfig = true;
+    Serial.println("We need to save the config");
 }
 
 void setup() {
-  // Don Quijote de la Mancha
+  decoder.setScreenClearCallback(screenClearCallback);
+  decoder.setUpdateScreenCallback(updateScreenCallback);
+  decoder.setDrawPixelCallback(drawPixelCallback);
+
   Serial.begin(115200);
+  delay(1000);
 
-  //read configuration from FS json
-  Serial.println("Montando FS...");
+  Serial.println("Mounting FS...");
 
-  if (SPIFFS.begin(true)) {
-    if (SPIFFS.exists("/config.json")) {
-      Serial.println("SF montado");
-      //El fichero existe y leemos los datos
-      File configFile = SPIFFS.open("/config.json", "r");
-      if (configFile) {
-        size_t size = configFile.size();
-        // Allocate a buffer to store contents of the file.
-        std::unique_ptr<char[]> buf(new char[size]);
+    if (SPIFFS.begin(true)) {
+        if (SPIFFS.exists("/config.json")) {
+        Serial.println("FS mounted");
+        File configFile = SPIFFS.open("/config.json", "r");
+        if (configFile) {
+            size_t size = configFile.size();
+            std::unique_ptr<char[]> buf(new char[size]);
 
-        configFile.readBytes(buf.get(), size);
+            configFile.readBytes(buf.get(), size);
+            DynamicJsonDocument doc(256);
+            DeserializationError error = deserializeJson(doc, buf.get());
+            if (error) {
+                Serial.printf("There was an error reading the config.json file\n");
+                return;
+            }
+            JsonObject json = doc.as<JsonObject>();
+
+            serializeJson(json, Serial);
+            if (!json.isNull()) {
+
+            strcpy(mqtt_server, json["mqtt_server"]);
+            strcpy(mqtt_port, json["mqtt_port"]);
+            strcpy(mqtt_user, json["mqtt_user"]);
+            strcpy(mqtt_password, json["mqtt_password"]);
+
+            } else {
+            Serial.println("Something happened");
+            }
+        }
+        }
+    } else {
+        Serial.println("Couldn't mount the FS");
+    } 
+
+    WiFiManagerParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
+    WiFiManagerParameter custom_mqtt_port("port", "MQTT server", mqtt_server, 8);
+    WiFiManagerParameter custom_mqtt_user("user", "MQTT user", mqtt_user, 40);
+    WiFiManagerParameter custom_mqtt_pass("pass", "MQTT password", mqtt_password, 40);
+
+    WiFiManager wifiManager;
+    WiFi.macAddress(mac);
+    uint8_t baseMac[6];
+    esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
+    char baseMacChr[7] = {0};
+    sprintf(macFull, "%02X%02X%02X", baseMac[3], baseMac[4], baseMac[5]);
+    // Serial.println(baseMacChr);
+
+    strcat(SSID, host);
+    strcat(SSID, separator);
+    strcat(SSID, macFull);
+
+    matrix.addLayer(&backgroundLayer); 
+    matrix.addLayer(&scrollingLayer); 
+    // matrix.addLayer(&indexedLayer);
+    matrix.begin(28000);
+    matrix.setBrightness(defaultBrightness);
+    scrollingLayer.setOffsetFromTop(defaultScrollOffset);
+    backgroundLayer.enableColorCorrection(true);
+
+
+    scrollingLayer.setColor(WHITE);
+    scrollingLayer.setMode(wrapForward);
+    scrollingLayer.setSpeed(60);
+    scrollingLayer.setFont(font6x10);
+    scrollingLayer.start("Connecting to WiFi...", -1);
+
+    Serial.println("Connecting to WiFi...");
+    WiFi.setHostname(SSID);
+    WiFi.setAutoReconnect(true);
+
+    wifiManager.setAPCallback(configModeCallback);
+    wifiManager.setTimeout(180);
+    wifiManager.setCleanConnect(true);
+    wifiManager.setSaveConfigCallback(saveConfigCallback);
+
+    wifiManager.addParameter(&custom_mqtt_server);
+    wifiManager.addParameter(&custom_mqtt_port);
+    wifiManager.addParameter(&custom_mqtt_user);
+    wifiManager.addParameter(&custom_mqtt_pass);
+
+    if (!wifiManager.autoConnect(SSID, "password")) {
+        delay(3000);
+    }
+    scrollingLayer.stop();
+
+    client.setServer(mqtt_server, atoi(mqtt_port));
+    client.connect(MQTT_CLIENT, mqtt_user, mqtt_password);
+    client.setBufferSize(30000);
+    client.setCallback(mqttCallback);
+
+    if (client.connected()) {
+        Serial.println("Connected to MQTT (main loop)");
+        client.publish(STATUS_TOPIC, (const char *)"up");
+        client.subscribe(STATUS_TOPIC);
+        client.subscribe(APPLET_TOPIC);
+        client.subscribe(BRIGHTNESS_TOPIC);
+
+    }
+
+    if (saveConfig) {
+        strcpy(mqtt_server, custom_mqtt_server.getValue());
+        strcpy(mqtt_port, custom_mqtt_port.getValue());
+        strcpy(mqtt_user, custom_mqtt_user.getValue());
+        strcpy(mqtt_password, custom_mqtt_pass.getValue());
+
         DynamicJsonDocument doc(256);
-        DeserializationError error = deserializeJson(doc, buf.get());
-        if (error) {
-          //TODO
+        JsonObject json = doc.to<JsonObject>();
+
+        json["mqtt_server"] = mqtt_server;
+        json["mqtt_port"]   = mqtt_port;
+        json["mqtt_user"]   = mqtt_user;
+        json["mqtt_password"]   = mqtt_password;
+
+        File configFile = SPIFFS.open("/config.json", "w");
+        if (!configFile) {
+        Serial.println("There was an error opening the file to write");
         }
-        JsonObject json = doc.as<JsonObject>();
 
-        serializeJson(json, Serial);
-        if (!json.isNull()) {
-
-          strcpy(mqtt_server, json["mqtt_server"]);
-          strcpy(mqtt_port, json["mqtt_port"]);
-          strcpy(mqtt_user, json["mqtt_user"]);
-          strcpy(mqtt_password, json["mqtt_password"]);
-
-        } else {
-          Serial.println("¿Ha explotado algo?");
-        }
-      }
+        serializeJson(json, configFile);
+        configFile.close();
+        saveConfig = false;
     }
-  } else {
-    Serial.println("SF no montado :(");
-  } 
-
-  // Configuración de la WiFi AP / STA
-  WiFiManagerParameter custom_mqtt_server("server", "Servidor MQTT", mqtt_server, 40);
-  WiFiManagerParameter custom_mqtt_port("port", "Puerto MQTT", mqtt_server, 8);
-  WiFiManagerParameter custom_mqtt_user("user", "Usuario MQTT", mqtt_user, 40);
-  WiFiManagerParameter custom_mqtt_pass("pass", "Contraseña MQTT", mqtt_password, 40);
-
-	WiFiManager wifiManager;
-	WiFi.macAddress(mac);
-	sprintf(macFull, "%d", ESP.getEfuseMac());
-  // Concatenamos los parámetros necesarios para formar el SSID
-	strcat(SSID, host);
-	strcat(SSID, separator);
-	strcat(SSID, macFull);
-
-  // Configuramos las capas que posteriormente vamos a utilizar
-  matrix.addLayer(&backgroundLayer); 
-  matrix.addLayer(&scrollingLayer); 
-  matrix.addLayer(&indexedLayer);
-  // Pintemos 
-  matrix.begin();
-  // Pongamos un brillo inicial bajo por si conectamos todo directamente a un USB
-  matrix.setBrightness(defaultBrightness);
-  // Configuremos el margen para los textos que se desplazan
-  scrollingLayer.setOffsetFromTop(defaultScrollOffset);
-  // Para ver los colores de forma Chachi Piruli, activemos la corrección de color
-  backgroundLayer.enableColorCorrection(true);
-
-
-  // Texto de ayuda
-  scrollingLayer.setColor(BLANCO);
-  scrollingLayer.setMode(wrapForward);
-  scrollingLayer.setSpeed(60);
-  scrollingLayer.setFont(font6x10);
-  scrollingLayer.start("Intentando conectar a la WiFi", -1);
-
-  ////////////////////////
-  // WiFi everywhere :D //
-  ////////////////////////
-
-  Serial.println("Conectando a la WiFi...");
-	// Configuramos el nombre para el SSID. Debe ser diferente para cada dispositivo
-	WiFi.setHostname(SSID);
-	WiFi.setAutoReconnect(true);
-
-  wifiManager.setAPCallback(configModeCallback);
-  wifiManager.setTimeout(120); // Cambiar a 180
-  wifiManager.setCleanConnect(true);
-  wifiManager.setSaveConfigCallback(saveConfigCallback);
-
-  wifiManager.addParameter(&custom_mqtt_server);
-  wifiManager.addParameter(&custom_mqtt_port);
-  wifiManager.addParameter(&custom_mqtt_user);
-  wifiManager.addParameter(&custom_mqtt_pass);
-
- 	if (!wifiManager.autoConnect(SSID)) {
-    delay(3000);
-	}
-  
-  // Paramos el desplazamiento del texto
-  scrollingLayer.stop();
-
-  client.setServer(mqtt_server, atoi(mqtt_port));
-  client.connect(MQTT_CLIENT, mqtt_user, mqtt_password);
-  client.setBufferSize(30000);
-  client.setCallback(mqttCallback);
-
-  if (client.connected()) {
-      Serial.println("Conectado a MQTT");
-      // Publicamos los asuntos necesarios
-      client.publish(SUBSCRIBERS_TOPIC, subscribersInScreen);
-      // Nos suscribimos a los asuntos necesario. También te deberías suscribir a https://www.youtube.com/domoticafacilconjota
-      client.subscribe(STATUS_TOPIC);
-      client.subscribe(SUBSCRIBERS_TOPIC);
-      client.subscribe(OTA_DATA_STD);
-
-  }
-
-  if (saveConfig) {
-    strcpy(mqtt_server, custom_mqtt_server.getValue());
-    strcpy(mqtt_port, custom_mqtt_port.getValue());
-    strcpy(mqtt_user, custom_mqtt_user.getValue());
-    strcpy(mqtt_password, custom_mqtt_pass.getValue());
-
-    DynamicJsonDocument doc(256);
-    JsonObject json = doc.to<JsonObject>();
-
-    json["mqtt_server"] = mqtt_server;
-    json["mqtt_port"]   = mqtt_port;
-    json["mqtt_user"]   = mqtt_user;
-    json["mqtt_password"]   = mqtt_password;
-
-    File configFile = SPIFFS.open("/config.json", "w");
-    if (!configFile) {
-      Serial.println("Fallo al abrir el fichero para escribir");
-    }
-
-    //serializeJson(json, Serial);
-    serializeJson(json, configFile);
-    configFile.close();
-    saveConfig = false;
-  }
-
-  // Ahora que ya está todo configuramos. Intentamos sincronizar con un servidor NTP
-	NTP.onNTPSyncEvent([](NTPSyncEvent_t event) {
-		ntpEvent = event;
-		ntpEventTriggered = true;
-	});
 
 }
 
 void loop() {
-	// Intentar reconectarse si se pierde la WiFi
-  while (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) {
-    WiFi.reconnect();
-    Serial.println(F("Intentando reconectar a WiFi"));
-    delay(10000);
-  }
-
-  client.loop();
-
-  // Si se produce una desconexión del cliente MQTT, intentamos reconectarnos
-  if (!client.connected()) {
-    Serial.println("No conectado a MQTT. Intentando reconectar.");
-    mqttReconnect(mqtt_user, mqtt_password);
-  }
-
-  // Nos hacemos cargo de sincronizar con el servidor NTP cada cierto tiempo.
-	if (syncEventTriggered) {
-		processSyncEvent(ntpEvent);
-		syncEventTriggered = false;
-	}
-
-  time_t currentTime = now();
-
-  // Configuramos todo lo necesario para dar la bienvenida
-  if (currentMode == WELCOME) {
-    backgroundLayer.fillScreen(NEGRO);
-
-    drawBitmap(32,0,&df);
-
-    char domotica[] = "Domótica";     // Importante para mostrar acentos
-    char facil[] = "Fácil";           // Importante para mostrar acentos
-    utf8ascii(domotica);
-    utf8ascii(facil);
-
-
-    backgroundLayer.setFont(font3x5);
-    backgroundLayer.drawString(alignToCenter(32, 4, 8), 2, BLANCO, domotica);
-    backgroundLayer.drawString(alignToCenter(32, 4, 5), 8, BLANCO, facil);
-    backgroundLayer.drawString(alignToCenter(32, 4, 8), 14, BLANCO, "con Jota");
-    backgroundLayer.drawString(alignToCenter(32, 4, 2), 20, BLANCO, "en");
-    backgroundLayer.drawString(alignToCenter(32, 4, 7), 26, BLANCO, "YouTube");
-    backgroundLayer.swapBuffers();
-
-    currentMode = NO_ONE;
-    delay(5000);
-  }
-
-  // Se solicita mostrar los datos de YouTube
-  if (currentMode == YOUTUBE) {
-    // Configuramos el fondo y la fuente
-    backgroundLayer.fillScreen(NEGRO);
-    backgroundLayer.setFont(gohufont11b);
-
-    if (minute(currentTime) % 2 == 0) {
-      // YouTube a la izquierda
-      drawBitmap(0,0,&yt);
-      // DF a la derecha
-      drawBitmap(32,0,&df);
-
-      backgroundLayer.drawString(alignToCenter(32, 6, strlen(subscribersInScreen)), 21, BLANCO, subscribersInScreen);
-      backgroundLayer.swapBuffers();
-
-    } else {
-      // DF a la izquierda
-      drawBitmap(0,0,&df);
-      // YouTube a la derecha
-      drawBitmap(32,0,&yt);
-
-      backgroundLayer.drawString(32 + alignToCenter(32, 6, strlen(subscribersInScreen)), 21, BLANCO, subscribersInScreen);
-      backgroundLayer.swapBuffers();
-
-    }
-  }
-
-    // Se solicita mostrar los datos de YouTube
-  if (currentMode == CUSTOM) {
-    // ¿Problemas? Better Call Saul 
-    DeserializationError error;
-
-    // Sólo procedemos en el caso de que sea necesario
-    if (deserilize) {
-        error = deserializeJson(document, otaData);
-        deserilize = false;
+    // Try to reconnect to wifi if connection lost
+    while (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) {
+        WiFi.reconnect();
+        Serial.println(F("Trying to reconnect to WiFi"));
+        delay(10000);
     }
 
-    // Configuramos el fondo
-    backgroundLayer.fillScreen(NEGRO);
+    client.loop();
 
-    // En caso de error lo mostramos
-    if (error) {
-      Serial.print(F("deserializeJson() falló: "));
-      Serial.println(error.c_str());
-      return;
+    if (!client.connected()) {
+        Serial.println("Not connected to MQTT. Trying to reconnect.");
+        mqttReconnect(mqtt_user, mqtt_password);
     }
 
-    // Declaramos las constantes que utilizaremos para mostrar la información en el panel
-    const char* titleMqtt = document["title"];
-    const char* valueMqtt = document["value"];
-    const char* imageMqtt = document["image"];
-
-    if (minute(currentTime) % 2 == 0) {
-
-      // Imagen a la izquierda
-      if (titleMqtt && valueMqtt && imageMqtt) {
-        drawBitmapMqtt(0, 0, imageMqtt);
-        backgroundLayer.setFont(font3x5);
-        backgroundLayer.drawString(alignToCenter(64, 4, strlen(titleMqtt)), 1, BLANCO, titleMqtt);
-        backgroundLayer.setFont(font6x10);
-        backgroundLayer.drawString(32 + alignToCenter(32, 6, strlen(valueMqtt)), 14, BLANCO, valueMqtt);
-
-        backgroundLayer.swapBuffers();
-      }
-    } else {
-      // DF a la izquierda
-
-      // Imagen a la derecha
-      if (titleMqtt && valueMqtt && imageMqtt) {
-        drawBitmapMqtt(32, 0, imageMqtt);
-        backgroundLayer.setFont(font3x5);
-        backgroundLayer.drawString(alignToCenter(64, 4, strlen(titleMqtt)), 1, BLANCO, titleMqtt);
-        backgroundLayer.setFont(font6x10);
-        backgroundLayer.drawString(alignToCenter(32, 6, strlen(valueMqtt)), 14, BLANCO, valueMqtt);
-
-        backgroundLayer.swapBuffers();      
-      }
+    if (brightness > 0) {
+        matrix.setBrightness((brightness*255) / 100);
+        brightness = -1;
     }
-  }
+    if (currentMode == WELCOME) {
+        Serial.println("Welcome!");
+        scrollingLayer.setColor(WHITE);
+        scrollingLayer.setMode(wrapForward);
+        scrollingLayer.setSpeed(60);
+        scrollingLayer.setFont(font6x10);
+        scrollingLayer.start("Welcome! Waiting for applets...", -1);
+        currentMode = NONE;
+    }
+    if (currentMode == APPLET) {
+        // Serial.println("Mode changed to applet");
+        scrollingLayer.stop();
+        static uint32_t lastFrameDisplayTime = 0;
+        static unsigned int currentFrameDelay = 0;
 
-  delay(1000);
+        unsigned long now = millis();
 
+        if((millis() - lastFrameDisplayTime) > currentFrameDelay) {
+            if (newapplet) { // MOVE TO mqtt.cpp ??
+                decoder.startDecoding((uint8_t *)appletdecoded, outputLength);
+                newapplet = false;
+            }
+            decoder.decodeFrame(false);
+
+            lastFrameDisplayTime = now;
+            currentFrameDelay = decoder.getFrameDelay_ms();
+        }
+    }
+    // Serial.println("End of loop");
+    // delay(1000);
 }

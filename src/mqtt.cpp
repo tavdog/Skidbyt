@@ -22,42 +22,38 @@
 
 unsigned long lastMsg = 0;
 int value = 0;
-char* subscribersInScreen = (char*)"00000";
-char* currentSubscribers = (char*)"00000";
-char* otaData;
-
+char* appletData;
+boolean newapplet = false;
 boolean deserilize = false;
+unsigned char * appletdecoded;
+size_t outputLength;
+extern "C" {
+    #include "crypto/base64.h"
+}
 
 // MODOS
 int currentMode = WELCOME;
+int brightness = -1;
 
 // Llamada de vuelta sobre MQTT
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Mensaje recibido [");
-  Serial.print(topic);
-  Serial.print("] ");
+  Serial.printf("Message received [%s]\n", topic);
 
-  // YOUTUBE
-  if (strcmp(topic, SUBSCRIBERS_TOPIC) == 0) {
+  if (strcmp(topic, APPLET_TOPIC) == 0) {
     payload[length] = '\0';
-    subscribersInScreen = (char*)payload;
-
-    if (strcmp(subscribersInScreen, currentSubscribers) == 0) {
-      // TODO
+    appletData = (char*)payload;
+    appletdecoded = base64_decode((const unsigned char*)appletData, strlen(appletData), &outputLength);
+    if (appletdecoded && outputLength > 1 && strncmp((const char*)appletdecoded, "GIF8", 4) == 0) {
+      newapplet = true;
+      currentMode = APPLET;
+      // Serial.println("Mode changed to applet");
     } else {
-      currentSubscribers = subscribersInScreen;
+      Serial.println("Error decoding base64. Not valid base64 or not GIF image");
     }
-    currentMode = YOUTUBE;
   }
-
-  // OTA IMAGE
-  if (strcmp(topic, OTA_DATA_STD) == 0) {
+  if (strcmp(topic, BRIGHTNESS_TOPIC) == 0) {
     payload[length] = '\0';
-    otaData = (char*)payload;
-
-    deserilize = true;
-
-    currentMode = CUSTOM;
+    brightness = atoi((char*)payload);
   }
 }
 
@@ -65,24 +61,20 @@ WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
 void mqttReconnect(char* mqtt_user, char* mqtt_password) {
-  Serial.print("mqttReconnect");
+  Serial.println("mqttReconnect");
 
-  // Reintentamos hasta que se conecte
   while (!client.connected()) {
-    Serial.print("Intentando reconectar a MQTT");
-    // Realizamos la conexión
+    Serial.println("Trying to reconnect to MQTT");
     if (client.connect(MQTT_CLIENT, mqtt_user, mqtt_password)) {
-      Serial.println("Conectado a MQTT");
-      // Una vez nos hayamos conectado, publicamos
-      client.publish(SUBSCRIBERS_TOPIC, subscribersInScreen);
-      // También nos volvemos a suscribir
+      Serial.println("Connected to MQTT");
+      client.publish(STATUS_TOPIC, (const char *)"up");
       client.subscribe(STATUS_TOPIC);
-      client.subscribe(SUBSCRIBERS_TOPIC);
-      client.subscribe(OTA_DATA_STD);
+      client.subscribe(BRIGHTNESS_TOPIC);
+      client.subscribe(APPLET_TOPIC);
     } else {
-      Serial.print("Fallo, rc=");
+      Serial.print("Failed, rc=");
       Serial.print(client.state());
-      Serial.println(" reintento en 5 segundos");
+      Serial.println("Retrying in 5 seconds");
       delay(5000);
     }
   }

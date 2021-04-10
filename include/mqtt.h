@@ -24,8 +24,12 @@ extern char msg[MSG_BUFFER_SIZE];
 extern int value;
 extern char* subscribersInScreen;
 extern char* currentSubscribers;
-extern char* otaData;
+extern char* appletData;
+extern unsigned char * appletdecoded;
+extern size_t outputLength;
 extern int currentMode;
+extern boolean newapplet;
+extern int brightness;
 
 extern boolean deserilize;
 

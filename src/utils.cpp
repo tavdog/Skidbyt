@@ -35,39 +35,60 @@ int alignToCenter (int totalWidth, int fontWidth, int digits) {
     return startAt;
 }
 
+void printLocalTime()
+{
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+//   Serial.println(&timeinfo, "%M");
+Serial.println("--------\n");
+Serial.println(timeinfo.tm_min);
+}
+
+struct tm now() {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) {
+        Serial.println("Failed to obtain time");
+    }
+    return timeinfo;
+}
+
+
 // Cliente NTP
-boolean ntpEventTriggered = false;
-NTPSyncEvent_t ntpEvent;
-boolean ntpSignalSent = false;
-boolean syncEventTriggered = false; 
+// boolean ntpEventTriggered = false;
+// NTPSyncEvent_t ntpEvent;
+// boolean ntpSignalSent = false;
+// boolean syncEventTriggered = false; 
 
 // Actualizamos la hora
-void ntpUpdate() {
-	Serial.println("Actualizando hora");
-	if (!ntpSignalSent) {
-		NTP.begin(NTP_SERVER, 0, true, 0);
-		NTP.setInterval(3600);
-		ntpSignalSent = true;
-	}
+// void ntpUpdate() {
+// 	Serial.println("Actualizando hora");
+// 	if (!ntpSignalSent) {
+// 		NTP.begin(NTP_SERVER, 0, true, 0);
+// 		NTP.setInterval(3600);
+// 		ntpSignalSent = true;
+// 	}
 
-}
+// }
 
 // Sincronizamos los eventos
-void processSyncEvent(NTPSyncEvent_t ntpEvent) {
-	if (ntpEvent) {
-		Serial.print("Error en la sincronización de la hora: ");
-		if (ntpEvent == noResponse)
-			Serial.println("No puedo contactar con el Servidor NTP");
-		else if (ntpEvent == invalidAddress)
-			Serial.println("Dirección del Servidor NTP no válida");
-			else
-			Serial.println("Error desconocido");
-	}
-	else {
-		Serial.print("Hemos obtenido la hora NTP: ");
-		Serial.println(NTP.getTimeDateString(NTP.getLastNTPSync()));
-	}
-}
+// void processSyncEvent(NTPSyncEvent_t ntpEvent) {
+// 	if (ntpEvent) {
+// 		Serial.print("Error en la sincronización de la hora: ");
+// 		if (ntpEvent == noResponse)
+// 			Serial.println("No puedo contactar con el Servidor NTP");
+// 		else if (ntpEvent == invalidAddress)
+// 			Serial.println("Dirección del Servidor NTP no válida");
+// 			else
+// 			Serial.println("Error desconocido");
+// 	}
+// 	else {
+// 		Serial.print("Hemos obtenido la hora NTP: ");
+// 		Serial.println(NTP.getTimeDateString(NTP.getLastNTPSync()));
+// 	}
+// }
 
 static byte c1;  // Último caracter del buffer
 byte utf8ascii(byte ascii) {

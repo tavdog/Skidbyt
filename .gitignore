@@ -1,4 +1,8 @@
+*~
+.*
 .pio
-.vscode/*
+.vscode
 test/README
 password.h
+data/
+.travis.yml
