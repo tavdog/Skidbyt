@@ -1,15 +1,17 @@
-#include <FS.h>                                   // File System
+#include <FS.h>
 #include "SPIFFS.h"
 
-#include <Arduino.h>                              // Arduino
-#include <WiFiManager.h>                          // Configuración WiFi
-#include <PubSubClient.h>                         // Cliente MQTT 0.8.2
-#include <ArduinoJson.h>                          // Arduino JSON parser 6.15.1
+#include <Arduino.h>
+#include <WiFiManager.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h> 
 #include <time.h>
+#include <ArduinoOTA.h>
 
-#include <constants.h>                            // Cabecera de constantes
-#include <utils.h>                                // Cabecera de utilidades
-#include <mqtt.h>                                 // Cabecera MQTT
+#include <constants.h>
+#include <utils.h>
+#include <mqtt.h>
+#include <password.h>
 
 #include <MatrixHardware_ESP32_V0.h>                // This file contains multiple ESP32 hardware configurations, edit the file to define GPIOPINOUT (or add #define GPIOPINOUT with a hardcoded number before this #include)
 #include <SmartMatrix.h>
@@ -24,6 +26,7 @@
 #define ENABLE_SCROLLING        1
 
 
+void setupOTA();
 
 #if (USE_SMARTMATRIX == 1)
 /* SmartMatrix configuration and memory allocation */
@@ -206,6 +209,8 @@ void setup() {
     }
     scrollingLayer.stop();
 
+    setupOTA();
+
     client.setServer(mqtt_server, atoi(mqtt_port));
     client.connect(MQTT_CLIENT, mqtt_user, mqtt_password);
     client.setBufferSize(30000);
@@ -255,6 +260,7 @@ void loop() {
     }
 
     client.loop();
+    ArduinoOTA.handle();
 
     if (!client.connected()) {
         Serial.println("Not connected to MQTT. Trying to reconnect.");
@@ -283,7 +289,7 @@ void loop() {
         unsigned long now = millis();
 
         if((millis() - lastFrameDisplayTime) > currentFrameDelay) {
-            if (newapplet) { // MOVE TO mqtt.cpp ??
+            if (newapplet) {
                 decoder.startDecoding((uint8_t *)appletdecoded, outputLength);
                 newapplet = false;
             }
@@ -295,4 +301,48 @@ void loop() {
     }
     // Serial.println("End of loop");
     // delay(1000);
+}
+
+void setupOTA() {
+
+    // Port defaults to 3232
+    // ArduinoOTA.setPort(3232);
+
+    // Hostname defaults to esp3232-[MAC]
+    ArduinoOTA.setHostname(OTA_HOST);
+
+    // No authentication by default
+    ArduinoOTA.setPassword(otaPassword);
+
+    // Password can be set with it's md5 value as well
+    // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+    // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+    ArduinoOTA
+        .onStart([]() {
+        String type;
+        if (ArduinoOTA.getCommand() == U_FLASH)
+            type = "sketch";
+        else // U_SPIFFS
+            type = "filesystem";
+
+        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+        Serial.println("Start updating " + type);
+        })
+        .onEnd([]() {
+            Serial.println("\nEnd");
+        })
+        .onProgress([](unsigned int progress, unsigned int total) {
+            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        })
+        .onError([](ota_error_t error) {
+            Serial.printf("Error[%u]: ", error);
+            if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+            else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+            else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+            else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+            else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        });
+
+    ArduinoOTA.begin();
 }
