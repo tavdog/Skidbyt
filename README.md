@@ -19,3 +19,7 @@ e.g.:
 
 ### plm/status
 "up" gets published when ESP32 boots up.
+
+
+### plm/current
+The current applet gets pushed when loaded
