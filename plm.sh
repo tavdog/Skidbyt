@@ -16,4 +16,4 @@ if [[ "$topic" == "applet" ]];then
 else
     payload=$data
 fi
-docker run --rm -it ruimarinho/mosquitto mosquitto_pub -h $server  -u "$username" -P "$password" -t "plm/$topic"  -m "$payload"
+docker run --rm -it ruimarinho/mosquitto mosquitto_pub -h $server  -u "$username" -P "$password" -t "plm/$topic"  -m "$payload" -r
