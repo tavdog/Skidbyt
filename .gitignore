@@ -6,3 +6,4 @@ test/README
 password.h
 data/
 .travis.yml
+upload_flags
