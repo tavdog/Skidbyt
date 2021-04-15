@@ -2,6 +2,7 @@
 #include <WiFiManager.h>
 #include <WiFi.h>
 #include <constants.h>
+#include <ArduinoJson.h>
 
 unsigned long lastMsg = 0;
 int value = 0;
@@ -14,22 +15,36 @@ extern "C" {
     #include "crypto/base64.h"
 }
 
-// MODOS
 int currentMode = WELCOME;
 int brightness = -1;
 
-// Llamada de vuelta sobre MQTT
+StaticJsonDocument<32> doc;
+
+WiFiClient wifiClient;
+PubSubClient client(wifiClient);
+
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.printf("Message received [%s]\n", topic);
 
   if (strcmp(topic, APPLET_TOPIC) == 0) {
     payload[length] = '\0';
     appletData = (char*)payload;
-    appletdecoded = base64_decode((const unsigned char*)appletData, strlen(appletData), &outputLength);
+    DeserializationError error = deserializeJson(doc, appletData, length);
+
+    if (error) {
+      Serial.print(F("deserializeJson() failed: "));
+      Serial.println(error.f_str());
+      return;
+    }
+
+    const char* applet_name = doc["applet"];
+    const char* applet = doc["payload"];
+
+    appletdecoded = base64_decode((const unsigned char*)applet, strlen(applet), &outputLength);
     if (appletdecoded && outputLength > 1 && strncmp((const char*)appletdecoded, "GIF8", 4) == 0) {
       newapplet = true;
       currentMode = APPLET;
-      // Serial.println("Mode changed to applet");
+      client.publish(CURRENT_APP, applet_name, true);
     } else {
       Serial.println("Error decoding base64. Not valid base64 or not GIF image");
     }
@@ -40,8 +55,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-WiFiClient wifiClient;
-PubSubClient client(wifiClient);
 
 void mqttReconnect(char* mqtt_user, char* mqtt_password) {
   Serial.println("mqttReconnect");

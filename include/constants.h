@@ -7,6 +7,7 @@
 const float hourOffset = 1;
 #define MQTT_CLIENT "panel-led-mqtt"
 #define STATUS_TOPIC "plm/status"
+#define CURRENT_APP "plm/current"
 #define APPLET_TOPIC "plm/applet"
 #define BRIGHTNESS_TOPIC "plm/brightness"
 
