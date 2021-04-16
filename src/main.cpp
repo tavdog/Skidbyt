@@ -299,8 +299,6 @@ void loop() {
             currentFrameDelay = decoder.getFrameDelay_ms();
         }
     }
-    // Serial.println("End of loop");
-    // delay(1000);
 }
 
 void setupOTA() {
