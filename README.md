@@ -12,7 +12,7 @@ e.g:
 
 
 ### plm/brightness
-#### Payload: Brightness level set between as number 0 to 100
+#### Payload: Brightness level set as number, 0 to 100
 e.g.:
 
 `80`
