@@ -111,7 +111,7 @@ bool saveConfig = false;
 
 void saveConfigCallback () {
     saveConfig = true;
-    Serial.println("We need to save the config");
+    Serial.println(F("We need to save the config"));
 }
 
 void setup() {
@@ -122,11 +122,11 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.println("Mounting FS...");
+  Serial.println(F("Mounting FS..."));
 
     if (SPIFFS.begin(true)) {
         if (SPIFFS.exists("/config.json")) {
-        Serial.println("FS mounted");
+        Serial.println(F("FS mounted"));
         File configFile = SPIFFS.open("/config.json", "r");
         if (configFile) {
             size_t size = configFile.size();
@@ -136,7 +136,7 @@ void setup() {
             DynamicJsonDocument doc(256);
             DeserializationError error = deserializeJson(doc, buf.get());
             if (error) {
-                Serial.printf("There was an error reading the config.json file\n");
+                Serial.println(F("There was an error reading the config.json file"));
                 return;
             }
             JsonObject json = doc.as<JsonObject>();
@@ -150,16 +150,16 @@ void setup() {
             strcpy(mqtt_password, json["mqtt_password"]);
 
             } else {
-            Serial.println("Something happened");
+            Serial.println(F("Something happened"));
             }
         }
         }
     } else {
-        Serial.println("Couldn't mount the FS");
+        // Serial.println("Couldn't mount the FS");
     } 
 
     WiFiManagerParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
-    WiFiManagerParameter custom_mqtt_port("port", "MQTT server", mqtt_server, 8);
+    WiFiManagerParameter custom_mqtt_port("port", "MQTT port", mqtt_server, 8);
     WiFiManagerParameter custom_mqtt_user("user", "MQTT user", mqtt_user, 40);
     WiFiManagerParameter custom_mqtt_pass("pass", "MQTT password", mqtt_password, 40);
 
@@ -190,7 +190,7 @@ void setup() {
     scrollingLayer.setFont(font6x10);
     scrollingLayer.start("Connecting to WiFi...", -1);
 
-    Serial.println("Connecting to WiFi...");
+    Serial.println(F("Connecting to WiFi..."));
     WiFi.setHostname(SSID);
     WiFi.setAutoReconnect(true);
 
@@ -217,7 +217,7 @@ void setup() {
     client.setCallback(mqttCallback);
 
     if (client.connected()) {
-        Serial.println("Connected to MQTT (main loop)");
+        Serial.println(F("Connected to MQTT (main loop)"));
         client.publish(STATUS_TOPIC, (const char *)"up");
         client.subscribe(STATUS_TOPIC);
         client.subscribe(APPLET_TOPIC);
@@ -241,7 +241,7 @@ void setup() {
 
         File configFile = SPIFFS.open("/config.json", "w");
         if (!configFile) {
-        Serial.println("There was an error opening the file to write");
+        Serial.println(F("There was an error opening the file to write"));
         }
 
         serializeJson(json, configFile);
@@ -263,7 +263,7 @@ void loop() {
     ArduinoOTA.handle();
 
     if (!client.connected()) {
-        Serial.println("Not connected to MQTT. Trying to reconnect.");
+        Serial.println(F("Not connected to MQTT. Trying to reconnect."));
         mqttReconnect(mqtt_user, mqtt_password);
     }
 
@@ -272,16 +272,14 @@ void loop() {
         brightness = -1;
     }
     if (currentMode == WELCOME) {
-        Serial.println("Welcome!");
         scrollingLayer.setColor(WHITE);
         scrollingLayer.setMode(wrapForward);
         scrollingLayer.setSpeed(60);
         scrollingLayer.setFont(font6x10);
-        scrollingLayer.start("Welcome! Waiting for applets...", -1);
+        scrollingLayer.start("Waiting for applets...", -1);
         currentMode = NONE;
     }
     if (currentMode == APPLET) {
-        // Serial.println("Mode changed to applet");
         scrollingLayer.stop();
         static uint32_t lastFrameDisplayTime = 0;
         static unsigned int currentFrameDelay = 0;
@@ -325,21 +323,21 @@ void setupOTA() {
             type = "filesystem";
 
         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-        Serial.println("Start updating " + type);
+        // Serial.println("Start updating " + type);
         })
         .onEnd([]() {
-            Serial.println("\nEnd");
+            // Serial.println("\nEnd");
         })
         .onProgress([](unsigned int progress, unsigned int total) {
-            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+            // Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
         })
         .onError([](ota_error_t error) {
-            Serial.printf("Error[%u]: ", error);
-            if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-            else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-            else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-            else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-            else if (error == OTA_END_ERROR) Serial.println("End Failed");
+            // Serial.printf("Error[%u]: ", error);
+            // if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+        //     else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+        //     else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+        //     else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+        //     else if (error == OTA_END_ERROR) Serial.println("End Failed");
         });
 
     ArduinoOTA.begin();

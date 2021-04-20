@@ -9,6 +9,7 @@ extern char* subscribersInScreen;
 extern char* currentSubscribers;
 extern char* appletData;
 extern unsigned char * appletdecoded;
+extern unsigned char * base64decoded;
 extern size_t outputLength;
 extern int currentMode;
 extern boolean newapplet;
