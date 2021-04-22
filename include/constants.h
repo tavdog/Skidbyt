@@ -5,13 +5,7 @@
 
 #define NTP_SERVER "es.pool.ntp.org"
 const float hourOffset = 1;
-#define MQTT_CLIENT "panel-led-mqtt"
-#define STATUS_TOPIC "plm/status"
-#define CURRENT_APP "plm/current"
-#define APPLET_TOPIC "plm/applet"
-#define BRIGHTNESS_TOPIC "plm/brightness"
-
-#define OTA_HOST "panel-led-mqtt"
+#define TOPIC_PREFIX "plm"
 
 
 #define BLACK           {0x00,0x00,0x00}

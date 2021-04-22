@@ -14,7 +14,7 @@ if [ "$topic" == "applet" ];then
     echo "[+] Generating applet"
     data=$(curl -s "http://$pixlet_server:8080/applet/$2") # https://github.com/cghdev/pixlet
     [[ "$data" == "" ]] && echo "Applet does not exist" && exit 1
-    payload="{\"applet\": \"$2\", \"payload\": \"$data\"}"
+    payload="{\"applet\": \"$2\", \"payload\": \"$data\", \"timeout\": 5}"
 elif [ "$topic" == "list" ];then
     echo "[+] Available applets:"
     data=$(curl -s "http://$pixlet_server:8080/applets" | jq -r .[])
@@ -24,4 +24,4 @@ else
     payload=$data
 fi
 echo "[+] Publishing data to MQTT server"
-mosquitto_pub -h $server  -u "$username" -P "$password" -t "plm/$topic"  -m "$payload" -r
+mosquitto_pub -h $server  -u "$username" -P "$password" -t "plm/F8D8E0/$topic"  -m "$payload" -r

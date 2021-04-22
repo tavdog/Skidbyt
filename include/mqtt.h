@@ -1,12 +1,6 @@
 #ifndef MQTT_H
 #define MQTT_H
-#define MSG_BUFFER_SIZE	(255)
 
-extern unsigned long lastMsg;
-extern char msg[MSG_BUFFER_SIZE];
-extern int value;
-extern char* subscribersInScreen;
-extern char* currentSubscribers;
 extern char* appletData;
 extern unsigned char * appletdecoded;
 extern unsigned char * base64decoded;
@@ -14,6 +8,13 @@ extern size_t outputLength;
 extern int currentMode;
 extern boolean newapplet;
 extern int brightness;
+
+extern char hostName[11];
+extern char status_topic[18];
+extern char current_app[19];
+extern char applet_topic[18];
+extern char brightness_topic[22];
+extern char heap_topic[20];
 
 extern boolean deserilize;
 

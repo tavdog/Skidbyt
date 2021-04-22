@@ -9,7 +9,6 @@
 #include <ArduinoOTA.h>
 
 #include <constants.h>
-#include <utils.h>
 #include <mqtt.h>
 #include <password.h>
 
@@ -27,6 +26,7 @@
 
 
 void setupOTA();
+void setupTopics();
 
 #if (USE_SMARTMATRIX == 1)
 /* SmartMatrix configuration and memory allocation */
@@ -79,9 +79,9 @@ void drawPixelCallback(int16_t x, int16_t y, uint8_t red, uint8_t green, uint8_t
 int defaultScrollOffset = 6;
 
 // Variables de configuración para el AP WiFi
-char host[] = "PX";
-char separator[] = "_";
-char SSID[18];
+// char host[] = "PLM";
+// char separator[] = "_";
+// char SSID[10];
 byte mac[6];
 char macFull[6];
 
@@ -96,7 +96,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 
     // Show SSID
     backgroundLayer.setFont(font5x7);
-    backgroundLayer.drawString(0, 21, LIGHT_BLUE, SSID);
+    backgroundLayer.drawString(0, 21, LIGHT_BLUE, hostName);
     backgroundLayer.swapBuffers();
 }
 
@@ -115,44 +115,44 @@ void saveConfigCallback () {
 }
 
 void setup() {
-  decoder.setScreenClearCallback(screenClearCallback);
-  decoder.setUpdateScreenCallback(updateScreenCallback);
-  decoder.setDrawPixelCallback(drawPixelCallback);
+    decoder.setScreenClearCallback(screenClearCallback);
+    decoder.setUpdateScreenCallback(updateScreenCallback);
+    decoder.setDrawPixelCallback(drawPixelCallback);
 
-  Serial.begin(115200);
-  delay(1000);
+    Serial.begin(115200);
+    delay(1000);
 
-  Serial.println(F("Mounting FS..."));
+    Serial.println(F("Mounting FS..."));
 
     if (SPIFFS.begin(true)) {
         if (SPIFFS.exists("/config.json")) {
-        Serial.println(F("FS mounted"));
-        File configFile = SPIFFS.open("/config.json", "r");
-        if (configFile) {
-            size_t size = configFile.size();
-            std::unique_ptr<char[]> buf(new char[size]);
+            Serial.println(F("FS mounted"));
+            File configFile = SPIFFS.open("/config.json", "r");
+            if (configFile) {
+                size_t size = configFile.size();
+                std::unique_ptr<char[]> buf(new char[size]);
 
-            configFile.readBytes(buf.get(), size);
-            DynamicJsonDocument doc(256);
-            DeserializationError error = deserializeJson(doc, buf.get());
-            if (error) {
-                Serial.println(F("There was an error reading the config.json file"));
-                return;
+                configFile.readBytes(buf.get(), size);
+                DynamicJsonDocument doc(256);
+                DeserializationError error = deserializeJson(doc, buf.get());
+                if (error) {
+                    Serial.println(F("There was an error reading the config.json file"));
+                    return;
+                }
+                JsonObject json = doc.as<JsonObject>();
+
+                serializeJson(json, Serial);
+                if (!json.isNull()) {
+
+                    strcpy(mqtt_server, json["mqtt_server"]);
+                    strcpy(mqtt_port, json["mqtt_port"]);
+                    strcpy(mqtt_user, json["mqtt_user"]);
+                    strcpy(mqtt_password, json["mqtt_password"]);
+
+                } else {
+                    Serial.println(F("Something happened"));
+                }
             }
-            JsonObject json = doc.as<JsonObject>();
-
-            serializeJson(json, Serial);
-            if (!json.isNull()) {
-
-            strcpy(mqtt_server, json["mqtt_server"]);
-            strcpy(mqtt_port, json["mqtt_port"]);
-            strcpy(mqtt_user, json["mqtt_user"]);
-            strcpy(mqtt_password, json["mqtt_password"]);
-
-            } else {
-            Serial.println(F("Something happened"));
-            }
-        }
         }
     } else {
         // Serial.println("Couldn't mount the FS");
@@ -167,13 +167,8 @@ void setup() {
     WiFi.macAddress(mac);
     uint8_t baseMac[6];
     esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
-    char baseMacChr[7] = {0};
     sprintf(macFull, "%02X%02X%02X", baseMac[3], baseMac[4], baseMac[5]);
-    // Serial.println(baseMacChr);
-
-    strcat(SSID, host);
-    strcat(SSID, separator);
-    strcat(SSID, macFull);
+    snprintf(hostName, 11, PSTR("PLM-%s"),macFull);
 
     matrix.addLayer(&backgroundLayer); 
     matrix.addLayer(&scrollingLayer); 
@@ -191,7 +186,7 @@ void setup() {
     scrollingLayer.start("Connecting to WiFi...", -1);
 
     Serial.println(F("Connecting to WiFi..."));
-    WiFi.setHostname(SSID);
+    WiFi.setHostname(hostName);
     WiFi.setAutoReconnect(true);
 
     wifiManager.setAPCallback(configModeCallback);
@@ -204,24 +199,31 @@ void setup() {
     wifiManager.addParameter(&custom_mqtt_user);
     wifiManager.addParameter(&custom_mqtt_pass);
 
-    if (!wifiManager.autoConnect(SSID, "password")) {
+    if (!wifiManager.autoConnect(hostName, "password")) {
         delay(3000);
     }
     scrollingLayer.stop();
+    scrollingLayer.setMode(stopped);
+    scrollingLayer.start(hostName, -1);
+    delay(3000);
+
+    Serial.print(F("Hostname: "));
+    Serial.println(hostName);
 
     setupOTA();
+    setupTopics();
 
     client.setServer(mqtt_server, atoi(mqtt_port));
-    client.connect(MQTT_CLIENT, mqtt_user, mqtt_password);
+    client.connect(hostName, mqtt_user, mqtt_password);
     client.setBufferSize(30000);
     client.setCallback(mqttCallback);
 
     if (client.connected()) {
         Serial.println(F("Connected to MQTT (main loop)"));
-        client.publish(STATUS_TOPIC, (const char *)"up");
-        client.subscribe(STATUS_TOPIC);
-        client.subscribe(APPLET_TOPIC);
-        client.subscribe(BRIGHTNESS_TOPIC);
+        client.publish(status_topic, (const char *)"up");
+        client.subscribe(status_topic);
+        client.subscribe(applet_topic);
+        client.subscribe(brightness_topic);
 
     }
 
@@ -299,13 +301,21 @@ void loop() {
     }
 }
 
+void setupTopics() {
+    snprintf_P(status_topic, 18, PSTR("%s/%s/status"), TOPIC_PREFIX, macFull);
+    snprintf_P(current_app, 19, PSTR("%s/%s/current"), TOPIC_PREFIX, macFull);
+    snprintf_P(applet_topic, 18, PSTR("%s/%s/applet"), TOPIC_PREFIX, macFull);
+    snprintf_P(brightness_topic, 22, PSTR("%s/%s/brightness"), TOPIC_PREFIX, macFull);
+    snprintf_P(heap_topic, 20, PSTR("%s/%s/freeheap"), TOPIC_PREFIX, macFull);
+}
+
 void setupOTA() {
 
     // Port defaults to 3232
     // ArduinoOTA.setPort(3232);
 
     // Hostname defaults to esp3232-[MAC]
-    ArduinoOTA.setHostname(OTA_HOST);
+    ArduinoOTA.setHostname(hostName);
 
     // No authentication by default
     ArduinoOTA.setPassword(otaPassword);
@@ -316,6 +326,7 @@ void setupOTA() {
 
     ArduinoOTA
         .onStart([]() {
+        scrollingLayer.stop();
         String type;
         if (ArduinoOTA.getCommand() == U_FLASH)
             type = "sketch";

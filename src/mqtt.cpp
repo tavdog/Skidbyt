@@ -5,12 +5,18 @@
 #include <ArduinoJson.h>
 
 unsigned long lastMsg = 0;
-int value = 0;
 char* appletData;
 boolean newapplet = false;
 boolean deserilize = false;
 unsigned char * appletdecoded;
 unsigned char * base64decoded;
+char hostName[11];
+char status_topic[18];
+char current_app[19];
+char applet_topic[18];
+char brightness_topic[22];
+char heap_topic[20];
+
 size_t outputLength;
 extern "C" {
     #include "crypto/base64.h"
@@ -26,9 +32,9 @@ PubSubClient client(wifiClient);
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
     // Serial.printf("Message received [%s]\n", topic);
-    // Serial.printf("Heap available: %d\n", ESP.getFreeHeap());
-
-    if (strcmp(topic, APPLET_TOPIC) == 0) {
+    // uint32_t freeHeap = ESP.getFreeHeap();
+    // Serial.printf("Heap available: %d\n", freeHeap);
+    if (strcmp(topic, applet_topic) == 0) {
         payload[length] = '\0';
         appletData = (char*)payload;
         DeserializationError error = deserializeJson(doc, appletData, length);
@@ -54,12 +60,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
             newapplet = true;
             currentMode = APPLET;
-            client.publish(CURRENT_APP, applet_name, true);
+            client.publish(current_app, applet_name, true);
         } else {
             Serial.println(F("Error decoding base64. Not valid base64 or not GIF image"));
         }
     }
-    if (strcmp(topic, BRIGHTNESS_TOPIC) == 0) {
+    if (strcmp(topic, brightness_topic) == 0) {
         payload[length] = '\0';
         brightness = atoi((char*)payload);
     }
@@ -71,12 +77,12 @@ void mqttReconnect(char* mqtt_user, char* mqtt_password) {
 
     while (!client.connected()) {
         Serial.println(F("Trying to reconnect to MQTT"));
-        if (client.connect(MQTT_CLIENT, mqtt_user, mqtt_password)) {
+        if (client.connect(hostName, mqtt_user, mqtt_password)) {
             Serial.println(F("Connected to MQTT"));
-            client.publish(STATUS_TOPIC, (const char *)"up");
-            client.subscribe(STATUS_TOPIC);
-            client.subscribe(BRIGHTNESS_TOPIC);
-            client.subscribe(APPLET_TOPIC);
+            client.publish(status_topic, (const char *)"reconnected");
+            client.subscribe(status_topic);
+            client.subscribe(brightness_topic);
+            client.subscribe(applet_topic);
         } else {
             Serial.print(F("Failed, rc="));
             Serial.print(client.state());
