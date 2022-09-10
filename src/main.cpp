@@ -10,9 +10,10 @@
 
 #include <constants.h>
 #include <mqtt.h>
-#include <password.h>
+//#include <password.h>
 
-#include <MatrixHardware_ESP32_V0.h>                // This file contains multiple ESP32 hardware configurations, edit the file to define GPIOPINOUT (or add #define GPIOPINOUT with a hardcoded number before this #include)
+#include <Tidbyt_ESP32_RGB64x32MatrixPanel-I2S-DMA.h>
+
 #include <SmartMatrix.h>
 
 #include <GifDecoder.h>
@@ -159,7 +160,7 @@ void setup() {
     } 
 
     WiFiManagerParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
-    WiFiManagerParameter custom_mqtt_port("port", "MQTT port", mqtt_server, 8);
+    WiFiManagerParameter custom_mqtt_port("port", "MQTT port", mqtt_port, 8);
     WiFiManagerParameter custom_mqtt_user("user", "MQTT user", mqtt_user, 40);
     WiFiManagerParameter custom_mqtt_pass("pass", "MQTT password", mqtt_password, 40);
 
@@ -318,7 +319,7 @@ void setupOTA() {
     ArduinoOTA.setHostname(hostName);
 
     // No authentication by default
-    ArduinoOTA.setPassword(otaPassword);
+    // ArduinoOTA.setPassword(otaPassword);
 
     // Password can be set with it's md5 value as well
     // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3

@@ -1,6 +1,10 @@
-# panel-led-mqtt
+# Tidbyt-mqtt
 
-Custom version of [panel-led-mqtt](https://github.com/domoticafacilconjota/panel-led-mqtt/tree/v0.100-RC) to be used with [Pixlet](https://github.com/cghdev/pixlet). This version reads base64 encoded GIFs via a MQTT topic and uses [GifDecoder library](https://github.com/pixelmatix/GifDecoder/) to render it in the LED panel.
+Custom version of [https://github.com/cghdev/panel-led-mqtt] with Tidbyt pins defined and ready to build. Also include binary (firmware.bin) to flash directly to the Tidbyt.
+
+This firmware will only display gifs so make sure to pass --gif if you are using pixlet.
+
+See mosquitto_pub_example.sh for an example of how to push via mqtt
 
 # TOPIC MQTT
 
@@ -23,3 +27,6 @@ e.g.:
 
 ### plm/current
 The current applet gets pushed when loaded
+
+### To flash use esptool or espHome flash tool with the firmware.bin
+esptool.py write_flash --flash_size detect 0x0 firmware.bin
