@@ -31,7 +31,7 @@ WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-    // Serial.printf("Message received [%s]\n", topic);
+    Serial.printf("Message received [%s]\n", topic);
     // uint32_t freeHeap = ESP.getFreeHeap();
     // Serial.printf("Heap available: %d\n", freeHeap);
     if (strcmp(topic, applet_topic) == 0) {
@@ -77,13 +77,18 @@ void mqttReconnect(char* mqtt_user, char* mqtt_password) {
 
     while (!client.connected()) {
         Serial.println(F("Trying to reconnect to MQTT"));
-        if (client.connect(hostName, mqtt_user, mqtt_password)) {
+        Serial.println(hostName);
+
+    if (client.connect(hostName))
+        { //, mqtt_user, mqtt_password)) {
             Serial.println(F("Connected to MQTT"));
             client.publish(status_topic, (const char *)"reconnected");
             client.subscribe(status_topic);
             client.subscribe(brightness_topic);
             client.subscribe(applet_topic);
-        } else {
+        }
+        else
+        {
             Serial.print(F("Failed, rc="));
             Serial.print(client.state());
             Serial.println(F("Retrying in 5 seconds"));

@@ -306,6 +306,7 @@ void setupTopics() {
     snprintf_P(status_topic, 18, PSTR("%s/%s/status"), TOPIC_PREFIX, macFull);
     snprintf_P(current_app, 19, PSTR("%s/%s/current"), TOPIC_PREFIX, macFull);
     snprintf_P(applet_topic, 18, PSTR("%s/%s/applet"), TOPIC_PREFIX, macFull);
+    Serial.println(applet_topic);
     snprintf_P(brightness_topic, 22, PSTR("%s/%s/brightness"), TOPIC_PREFIX, macFull);
     snprintf_P(heap_topic, 20, PSTR("%s/%s/freeheap"), TOPIC_PREFIX, macFull);
 }
