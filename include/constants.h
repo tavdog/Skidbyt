@@ -5,7 +5,7 @@
 
 #define NTP_SERVER "es.pool.ntp.org"
 const float hourOffset = 1;
-#define TOPIC_PREFIX "plm"
+#define TOPIC_PREFIX "skidbyt"
 
 
 #define BLACK           {0x00,0x00,0x00}

@@ -4,10 +4,10 @@
 #include <Arduino.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
-#include <ArduinoJson.h> 
+#include <ArduinoJson.h>
+#include <LCBUrl.h>
 #include <time.h>
 #include <ArduinoOTA.h>
-
 #include <constants.h>
 #include <mqtt.h>
 //#include <password.h>
@@ -31,10 +31,6 @@ void setupTopics();
 
 #include "smart_matrix_setup.h"
 
-// Variables de configuración para el AP WiFi
-// char host[] = "PLM";
-// char separator[] = "_";
-// char SSID[10];
 byte mac[6];
 char macFull[6];
 
@@ -54,9 +50,10 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 }
 
 StaticJsonDocument<3500> document;
-
-char mqtt_server[40];
-char mqtt_port[8];
+char device_name[20] = "skidbyt_1";
+char mqtt_url[128] = "mqtt://127.0.0.1:1883/";
+char mqtt_server[40] = "127.0.0.1";
+char mqtt_port[8] = "1883";
 char mqtt_user[40];
 char mqtt_password[40];
 
@@ -97,6 +94,8 @@ void setup() {
                 serializeJson(json, Serial);
                 if (!json.isNull()) {
 
+                    strcpy(device_name, json["device_name"]);
+                    strcpy(mqtt_url, json["mqtt_url"]);
                     strcpy(mqtt_server, json["mqtt_server"]);
                     strcpy(mqtt_port, json["mqtt_port"]);
                     strcpy(mqtt_user, json["mqtt_user"]);
@@ -111,10 +110,10 @@ void setup() {
         // Serial.println("Couldn't mount the FS");
     } 
 
-    WiFiManagerParameter custom_mqtt_server("server", "MQTT server", mqtt_server, 40);
-    WiFiManagerParameter custom_mqtt_port("port", "MQTT port", mqtt_port, 8);
-    WiFiManagerParameter custom_mqtt_user("user", "MQTT user", mqtt_user, 40);
-    WiFiManagerParameter custom_mqtt_pass("pass", "MQTT password", mqtt_password, 40);
+    WiFiManagerParameter custom_device_name("device_name", "Device Name", device_name, 20);
+    WiFiManagerParameter custom_mqtt_url("server", "MQTT server", mqtt_url, 128);
+    // WiFiManagerParameter custom_mqtt_user("user", "MQTT user", mqtt_user, 40);
+    // WiFiManagerParameter custom_mqtt_pass("pass", "MQTT password", mqtt_password, 40);
 
     WiFiManager wifiManager;
     WiFi.macAddress(mac);
@@ -147,12 +146,13 @@ void setup() {
     wifiManager.setCleanConnect(true);
     wifiManager.setSaveConfigCallback(saveConfigCallback);
 
-    wifiManager.addParameter(&custom_mqtt_server);
-    wifiManager.addParameter(&custom_mqtt_port);
-    wifiManager.addParameter(&custom_mqtt_user);
-    wifiManager.addParameter(&custom_mqtt_pass);
+    wifiManager.addParameter(&custom_device_name);
+    wifiManager.addParameter(&custom_mqtt_url);
+    // wifiManager.addParameter(&custom_mqtt_port);
+    // wifiManager.addParameter(&custom_mqtt_user);
+    // wifiManager.addParameter(&custom_mqtt_pass);
 
-    if (!wifiManager.autoConnect(hostName, "password")) {
+    if (!wifiManager.autoConnect(hostName)) {
         delay(3000);
     }
     scrollingLayer.stop();
@@ -181,17 +181,29 @@ void setup() {
     }
 
     if (saveConfig) {
-        strcpy(mqtt_server, custom_mqtt_server.getValue());
-        strcpy(mqtt_port, custom_mqtt_port.getValue());
-        strcpy(mqtt_user, custom_mqtt_user.getValue());
-        strcpy(mqtt_password, custom_mqtt_pass.getValue());
+        
+        strcpy(device_name, custom_device_name.getValue());
+        strcpy(mqtt_url, custom_mqtt_url.getValue());
+
+        LCBUrl url;
+        if(!url.setUrl(mqtt_url)) {
+            Serial.println("Failure to parse URL;\n");
+            return;
+        }
 
         DynamicJsonDocument doc(256);
         JsonObject json = doc.to<JsonObject>();
 
-        json["mqtt_server"] = mqtt_server;
-        json["mqtt_port"]   = mqtt_port;
-        json["mqtt_user"]   = mqtt_user;
+        strcpy(mqtt_server,     url.getHost().c_str());
+        strcpy(mqtt_port,       String(url.getPort()).c_str());
+        strcpy(mqtt_user,       url.getUserName().c_str());
+        strcpy(mqtt_password,   url.getPassword().c_str());
+
+        json["device_name"]     = device_name;
+        json["mqtt_url"]        = mqtt_url;
+        json["mqtt_server"]     = mqtt_server;  
+        json["mqtt_port"]       = mqtt_port;    
+        json["mqtt_user"]       = mqtt_user;
         json["mqtt_password"]   = mqtt_password;
 
         File configFile = SPIFFS.open("/config.json", "w");
