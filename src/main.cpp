@@ -61,7 +61,7 @@ bool saveConfig = false;
 
 void saveConfigCallback () {
     saveConfig = true;
-    Serial.println(F("We need to save the config"));
+    Serial.println(F("Will save the config"));
 }
 
 void setup() {
@@ -267,12 +267,12 @@ void loop() {
 }
 
 void setupTopics() {
-    snprintf_P(status_topic, 18, PSTR("%s/%s/status"), TOPIC_PREFIX, macFull);
-    snprintf_P(current_app, 19, PSTR("%s/%s/current"), TOPIC_PREFIX, macFull);
-    snprintf_P(applet_topic, 18, PSTR("%s/%s/applet"), TOPIC_PREFIX, macFull);
+    snprintf_P(status_topic, 18,     PSTR("%s/status"),  device_name);
+    snprintf_P(current_app, 19,      PSTR("%s/current"), device_name);
+    snprintf_P(applet_topic, 18,     PSTR("%s/img"),     device_name);
     Serial.println(applet_topic);
-    snprintf_P(brightness_topic, 22, PSTR("%s/%s/brightness"), TOPIC_PREFIX, macFull);
-    snprintf_P(heap_topic, 20, PSTR("%s/%s/freeheap"), TOPIC_PREFIX, macFull);
+    snprintf_P(brightness_topic, 22, PSTR("%s/brightness"), device_name);
+    snprintf_P(heap_topic, 20, PSTR("%s/freeheap"), device_name);
 }
 
 void setupOTA() {
